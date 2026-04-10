@@ -1,0 +1,36 @@
+# Default interval between checks (seconds). Can be overridden per product.
+check_interval: 300
+
+# MicroCenter store IDs to reference in products.
+# Find your store ID at: https://www.microcenter.com/site/stores/default.aspx
+# Common IDs:
+#   025 - Westmont, IL
+#   055 - Madison Heights, MI
+#   065 - St. Louis Park, MN
+#   075 - Sharonville, OH
+#   085 - Marietta, GA
+#   095 - Houston, TX
+#   105 - Cambridge, MA
+#   115 - Rockville, MD
+#   121 - Yonkers, NY
+#   125 - Overland Park, KS
+#   131 - Denver, CO
+#   141 - Dallas, TX
+#   150 - Brooklyn, NY
+#   160 - Tustin, CA
+#   170 - Parkville, MD
+#   180 - Duluth, GA
+#   191 - San Jose, CA
+#   195 - Richmond, VA
+#   200 - Fairfax, VA
+
+stores:
+  - id: "055"
+    name: "Madison Heights, MI"
+
+products:
+  - name: "PETG 1kg Red"
+    url: "https://www.microcenter.com/product/626529/inland-175mm-petg-3d-printer-filament-1kg-(22-lbs)-spool-blue"
+    stores: ["075"]
+    # check_interval: 180  # optional per-product override
+    # price_threshold: 300  # optional: only notify on price drop if below this amount

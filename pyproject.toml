@@ -1,0 +1,24 @@
+[project]
+name = "mc-watcher"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx[http2]>=0.27",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "sqlalchemy>=2.0",
+    "apscheduler>=3.10",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "curl_cffi>=0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+    "pytest-httpx>=0.30",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
