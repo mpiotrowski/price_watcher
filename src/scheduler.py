@@ -26,7 +26,7 @@ def run_check(
     logger.info("Checking %s @ %s", product.name, store_name)
 
     try:
-        result: ScrapeResult = scrape(product.url, store_id, debug=True)
+        result: ScrapeResult = scrape(product.url, store_id)
     except Exception as e:
         logger.error("Scrape failed for %s @ %s: %s", product.name, store_name, e)
         return
@@ -68,16 +68,6 @@ def run_check(
                 in_stock=result.in_stock,
                 url=product.url,
             )
-
-        notifier.check_result(
-            bot_token=cfg.telegram_bot_token,
-            chat_id=cfg.telegram_chat_id,
-            product_name=result.product_name,
-            store_name=store_name,
-            in_stock=result.in_stock,
-            price=result.price,
-            url=product.url,
-        )
 
         snapshot = PriceSnapshot(
             product_url=product.url,
