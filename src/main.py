@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import logging
 import sys
+import threading
 
 from config import load_config
 from scheduler import build_and_start
+from telegram_listener import poll_updates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +24,15 @@ def main() -> None:
         len(cfg.products),
         len(cfg.stores),
     )
+
+    listener_thread = threading.Thread(
+        target=poll_updates,
+        args=(cfg,),
+        daemon=True,
+        name="telegram-listener",
+    )
+    listener_thread.start()
+
     build_and_start(cfg)
 
 
