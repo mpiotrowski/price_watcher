@@ -27,6 +27,9 @@ check_interval: 300
 stores:
   - id: "055"
     name: "Madison Heights, MI"
+  - id: "online"
+    name: "Unifi Online Store"
+    retailer_id: "unifi"
 
 products:
   - name: "PETG 1kg Red"
@@ -34,3 +37,6 @@ products:
     stores: ["055"]
     # check_interval: 180  # optional per-product override
     # price_threshold: 300  # optional: only notify on price drop if below this amount
+  - name: "UniFi Travel Router"
+    url: "https://store.ui.com/us/en/category/wifi-special-devices/products/utr"
+    stores: ["online"]
