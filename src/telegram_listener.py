@@ -11,7 +11,12 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from config import AppConfig
-from db import add_product, add_store, list_products, list_stores, remove_product, remove_store
+from db import (
+    Store,
+    add_product, add_store, get_store_by_code,
+    list_products, list_retailers, list_stores,
+    remove_product, remove_store,
+)
 import notifier
 from notifier import TELEGRAM_API, send
 from scheduler import schedule_product, unschedule_product
@@ -37,14 +42,15 @@ def _get_updates(bot_token: str, offset: int, timeout: int = 30) -> list[dict]:
 def _handle_list(cfg: AppConfig, engine: Engine) -> str:
     with Session(engine) as session:
         products = list_products(session)
-        store_map = {s.id: s.name for s in list_stores(session)}
+        store_map = {s.id: s for s in list_stores(session)}
 
     if not products:
         return "No products are currently being tracked."
 
     lines = ["<b>Tracked products:</b>\n"]
     for product in products:
-        store_name = store_map.get(product.store_id, product.store_id)
+        store = store_map.get(product.store_id)
+        store_display = f"{store.store_code} ({store.name})" if store else str(product.store_id)
         display_name = product.name or product.url
         interval = product.check_interval or cfg.check_interval
         threshold_line = ""
@@ -52,80 +58,102 @@ def _handle_list(cfg: AppConfig, engine: Engine) -> str:
             threshold_line = f" | threshold: ${product.price_threshold:.2f}"
         lines.append(
             f"#{product.id} <b>{html.escape(display_name)}</b>\n"
-            f"   🏪 {html.escape(store_name)}\n"
+            f"   🏪 {html.escape(store_display)}\n"
             f"   ⏱ every {interval}s{threshold_line}\n"
-            f"   <a href=\"{html.escape(product.url)}\">View on MicroCenter</a>"
+            f"   <a href=\"{html.escape(product.url)}\">View product</a>"
         )
     return "\n".join(lines)
 
 
 def _handle_stores(engine: Engine) -> str:
     with Session(engine) as session:
+        retailers = list_retailers(session)
         stores = list_stores(session)
 
     if not stores:
-        return "No stores configured. Add one with /addstore &lt;store_id&gt; &lt;name&gt;"
+        return "No stores configured. Add one with /addstore &lt;retailer_id&gt; &lt;store_code&gt; &lt;name&gt;"
+
+    retailer_name_map = {r.id: r.name for r in retailers}
+    by_retailer: dict[str, list[Store]] = {}
+    for store in stores:
+        by_retailer.setdefault(store.retailer_id, []).append(store)
 
     lines = ["<b>Configured stores:</b>\n"]
-    for store in stores:
-        lines.append(f"  <code>{html.escape(store.id)}</code> — {html.escape(store.name)}")
+    for retailer_id, retailer_stores in by_retailer.items():
+        retailer_name = retailer_name_map.get(retailer_id, retailer_id)
+        lines.append(f"<b>{html.escape(retailer_name)}:</b>")
+        for store in retailer_stores:
+            lines.append(
+                f"  #{store.id}  <code>{html.escape(store.store_code)}</code> — {html.escape(store.name)}"
+            )
     return "\n".join(lines)
 
 
 def _handle_addstore(args: list[str], engine: Engine) -> str:
-    if len(args) < 2:
-        return "Usage: /addstore &lt;store_id&gt; &lt;name&gt;\nExample: /addstore 055 <i>Madison Heights, MI</i>"
+    if len(args) < 3:
+        return (
+            "Usage: /addstore &lt;retailer_id&gt; &lt;store_code&gt; &lt;name&gt;\n"
+            "Example: /addstore microcenter 065 <i>Westmont, IL</i>"
+        )
 
-    store_id = args[0]
-    name = " ".join(args[1:])
+    retailer_id, store_code = args[0], args[1]
+    name = " ".join(args[2:])
 
     with Session(engine) as session:
-        existing = list_stores(session)
-        if any(s.id == store_id for s in existing):
-            return f"Store <code>{html.escape(store_id)}</code> already exists."
-        add_store(session, store_id, name)
+        retailers = list_retailers(session)
+        if not any(r.id == retailer_id for r in retailers):
+            known = ", ".join(f"<code>{html.escape(r.id)}</code>" for r in retailers)
+            return f"Unknown retailer <code>{html.escape(retailer_id)}</code>. Known retailers: {known or 'none'}"
 
-    logger.info("Added store: %s (%s)", store_id, name)
-    return f"Added store <code>{html.escape(store_id)}</code> — {html.escape(name)}"
+        if get_store_by_code(session, retailer_id, store_code) is not None:
+            return f"Store <code>{html.escape(store_code)}</code> already exists under {html.escape(retailer_id)}."
+
+        store = add_store(session, retailer_id, store_code, name)
+        store_db_id = store.id
+
+    logger.info("Added store: %s/%s (%s) [#%d]", retailer_id, store_code, name, store_db_id)
+    return (
+        f"Added store #{store_db_id}: <code>{html.escape(store_code)}</code> — "
+        f"{html.escape(name)} (under {html.escape(retailer_id)})"
+    )
 
 
 def _handle_removestore(args: list[str], engine: Engine) -> str:
-    if not args:
-        return "Usage: /removestore &lt;store_id&gt;"
+    if not args or not args[0].isdigit():
+        return "Usage: /removestore &lt;store_id&gt;\nGet the numeric ID from /stores"
 
-    store_id = args[0]
+    store_db_id = int(args[0])
 
     with Session(engine) as session:
-        active_products = [p for p in list_products(session) if p.store_id == store_id]
+        store = session.get(Store, store_db_id)
+        if store is None:
+            return f"Store #{store_db_id} not found."
+
+        active_products = [p for p in list_products(session) if p.store_id == store_db_id]
         if active_products:
             names = ", ".join(
                 f"#{p.id} {html.escape(p.name or p.url)}" for p in active_products
             )
             return (
-                f"Cannot remove store <code>{html.escape(store_id)}</code> — "
+                f"Cannot remove store #{store_db_id} (<code>{html.escape(store.store_code)}</code>) — "
                 f"it still has active products: {names}\n"
                 f"Remove them first with /remove &lt;id&gt;"
             )
-        removed = remove_store(session, store_id)
+        store_code = store.store_code
+        remove_store(session, store_db_id)
 
-    if not removed:
-        return f"Store <code>{html.escape(store_id)}</code> not found."
-
-    logger.info("Removed store: %s", store_id)
-    return f"Removed store <code>{html.escape(store_id)}</code>"
+    logger.info("Removed store: #%d (%s)", store_db_id, store_code)
+    return f"Removed store #{store_db_id} (<code>{html.escape(store_code)}</code>)"
 
 
 def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: BackgroundScheduler) -> str:
     if len(args) < 2:
         return (
-            "Usage: /add &lt;url&gt; &lt;store_id&gt; [price_threshold] [interval_seconds]\n"
+            "Usage: /add &lt;url&gt; &lt;store_code&gt; [price_threshold] [interval_seconds]\n"
             "Example: /add https://www.microcenter.com/product/123/name 055 29.99 300"
         )
 
-    url, store_id = args[0], args[1]
-
-    if not url.startswith("https://www.microcenter.com/product/"):
-        return "Invalid URL — must be a MicroCenter product URL (https://www.microcenter.com/product/...)."
+    url, store_code = args[0], args[1]
 
     price_threshold: float | None = None
     check_interval: int | None = None
@@ -143,17 +171,33 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
             return f"Invalid interval: <code>{html.escape(args[3])}</code> — must be a whole number of seconds."
 
     with Session(engine) as session:
-        store = next((s for s in list_stores(session) if s.id == store_id), None)
+        retailers = list_retailers(session)
+        matched_retailer = next(
+            (r for r in retailers if r.base_url and url.startswith(r.base_url)),
+            None,
+        )
+        if matched_retailer is None:
+            known_urls = ", ".join(
+                f"<code>{html.escape(r.base_url)}</code>" for r in retailers if r.base_url
+            )
+            return (
+                f"Invalid URL — must start with a known retailer's base URL.\n"
+                f"Known: {known_urls or 'none configured'}"
+            )
+
+        store = get_store_by_code(session, matched_retailer.id, store_code)
         if store is None:
             return (
-                f"Unknown store <code>{html.escape(store_id)}</code>. "
+                f"Unknown store <code>{html.escape(store_code)}</code> for {html.escape(matched_retailer.name)}. "
                 f"Add it first with /addstore, or check available stores with /stores."
             )
         store_name = store.name
+        store_id = store.id
+        retailer_id = matched_retailer.id
 
         existing = list_products(session)
         if any(p.url == url and p.store_id == store_id for p in existing):
-            return f"Already tracking that product at store <code>{html.escape(store_id)}</code>."
+            return f"Already tracking that product at store <code>{html.escape(store_code)}</code>."
 
         product = add_product(
             session,
@@ -166,12 +210,12 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
 
     schedule_product(
         scheduler, cfg,
-        product_id, url, store_id, store_name,
+        product_id, url, store_id, store_code, retailer_id, store_name,
         check_interval, price_threshold,
         engine,
     )
 
-    logger.info("Added product #%d @ %s", product_id, store_id)
+    logger.info("Added product #%d @ %s/%s", product_id, retailer_id, store_code)
     threshold_line = f"\n   threshold: ${price_threshold:.2f}" if price_threshold is not None else ""
     interval_line = f"\n   interval: {check_interval}s" if check_interval is not None else ""
     return (
@@ -194,11 +238,13 @@ def _handle_remove(args: list[str], engine: Engine, scheduler: BackgroundSchedul
             return f"No active product with ID #{product_id}."
         display_name = html.escape(product.name or product.url)
         store_id = product.store_id
+        store = session.get(Store, store_id)
+        store_display = store.store_code if store else str(store_id)
         remove_product(session, product_id)
 
     unschedule_product(scheduler, product_id, store_id)
     logger.info("Removed product #%d", product_id)
-    return f"Removed <b>{display_name}</b> @ <code>{html.escape(store_id)}</code>"
+    return f"Removed <b>{display_name}</b> @ <code>{html.escape(store_display)}</code>"
 
 
 def poll_updates(cfg: AppConfig, engine: Engine, scheduler: BackgroundScheduler) -> None:
@@ -262,5 +308,4 @@ def poll_updates(cfg: AppConfig, engine: Engine, scheduler: BackgroundScheduler)
             send(cfg.telegram_bot_token, cfg.telegram_chat_id, reply)
 
         if not updates:
-            # Brief pause on empty poll to avoid tight loop on network errors
             time.sleep(1)

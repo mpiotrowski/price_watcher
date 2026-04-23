@@ -23,24 +23,24 @@ class ScrapeResult:
     product_name: str
     price: float | None
     in_stock: bool
-    store_id: str
+    store_code: str
     url: str
 
 
-def scrape(url: str, store_id: str, debug: bool = False) -> ScrapeResult:
+def scrape(url: str, store_code: str, debug: bool = False) -> ScrapeResult:
     """
     Fetch a MicroCenter product page for the given store and extract
     price and stock status.
 
     Args:
         url: Full MicroCenter product URL.
-        store_id: MicroCenter store ID (e.g. "055").
+        store_code: MicroCenter store code (e.g. "055").
         debug: When True, saves raw HTML to /tmp/mc_debug.html.
     """
     response = requests.get(
         url,
         impersonate="chrome124",
-        cookies={"storeSelected": store_id},
+        cookies={"storeSelected": store_code},
         timeout=30,
     )
     response.raise_for_status()
@@ -61,7 +61,7 @@ def scrape(url: str, store_id: str, debug: bool = False) -> ScrapeResult:
         product_name=product_name,
         price=price,
         in_stock=in_stock,
-        store_id=store_id,
+        store_code=store_code,
         url=url,
     )
 

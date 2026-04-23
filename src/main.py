@@ -4,7 +4,7 @@ import sys
 from sqlalchemy.orm import Session
 
 from config import load_config
-from db import add_product, add_store, init_db, list_products, list_stores
+from db import Retailer, add_product, add_retailer, add_store, get_store_by_code, init_db, list_products, list_stores
 from notifier import register_commands
 from scheduler import build_and_start
 from telegram_listener import poll_updates
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def seed_from_yaml(engine, cfg) -> None:
-    """Populate stores and tracked_products from the YAML config on first run."""
+    """Populate retailers, stores and tracked_products from the YAML config on first run."""
     with Session(engine) as session:
         if list_stores(session) or list_products(session, include_inactive=True):
             logger.info("Database already seeded, skipping YAML migration")
@@ -28,25 +28,37 @@ def seed_from_yaml(engine, cfg) -> None:
 
         logger.info("Seeding database from products.yml")
 
-        # Collect all store IDs referenced by products (may exceed the stores list)
-        all_store_ids = {sid for p in cfg.products for sid in p.stores}
+        # Seed the default retailer
+        if session.get(Retailer, "microcenter") is None:
+            add_retailer(session, "microcenter", "MicroCenter", "https://www.microcenter.com")
+            logger.info("  Added retailer: microcenter")
 
-        for store_id in all_store_ids:
-            store_cfg = cfg.stores.get(store_id)
-            name = store_cfg.name if store_cfg else store_id
-            add_store(session, store_id, name)
-            logger.info("  Added store: %s (%s)", store_id, name)
+        # Collect all store codes referenced by products (may exceed the stores list)
+        all_store_codes = {code for p in cfg.products for code in p.stores}
+
+        for store_code in all_store_codes:
+            store_cfg = cfg.stores.get(store_code)
+            name = store_cfg.name if store_cfg else store_code
+            retailer_id = store_cfg.retailer_id if store_cfg else "microcenter"
+            add_store(session, retailer_id, store_code, name)
+            logger.info("  Added store: %s/%s (%s)", retailer_id, store_code, name)
 
         for product_cfg in cfg.products:
-            for store_id in product_cfg.stores:
+            for store_code in product_cfg.stores:
+                store_cfg = cfg.stores.get(store_code)
+                retailer_id = store_cfg.retailer_id if store_cfg else "microcenter"
+                store = get_store_by_code(session, retailer_id, store_code)
+                if store is None:
+                    logger.warning("  Store %s/%s not found, skipping product %s", retailer_id, store_code, product_cfg.name)
+                    continue
                 add_product(
                     session,
                     url=product_cfg.url,
-                    store_id=store_id,
+                    store_id=store.id,
                     check_interval=product_cfg.check_interval,
                     price_threshold=product_cfg.price_threshold,
                 )
-                logger.info("  Added product: %s @ %s", product_cfg.name, store_id)
+                logger.info("  Added product: %s @ %s/%s", product_cfg.name, retailer_id, store_code)
 
 
 def main() -> None:
