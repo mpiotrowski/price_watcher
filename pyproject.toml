@@ -1,11 +1,11 @@
 [project]
 name = "mc-watcher"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "httpx[http2]>=0.27",
     "beautifulsoup4>=4.12",
-    "lxml>=5.0",
+    "lxml>=6.0.4",
     "sqlalchemy>=2.0",
     "apscheduler>=3.10",
     "pyyaml>=6.0",
@@ -16,7 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff>=0.4",
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-httpx>=0.30",
 ]
 

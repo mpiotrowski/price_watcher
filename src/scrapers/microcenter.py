@@ -163,18 +163,6 @@ def _jsonld_offer_price(soup: BeautifulSoup) -> float | None:
     return _parse_price_string(str(raw)) if raw is not None else None
 
 
-def _jsonld_offer_value(soup: BeautifulSoup, key: str):
-    data = _get_jsonld(soup)
-    if not data:
-        return None
-    offers = data.get("offers") or data.get("Offers")
-    if not offers:
-        return None
-    if isinstance(offers, list):
-        offers = offers[0]
-    return offers.get(key)
-
-
 # ── Price string parser ──────────────────────────────────────────────────────
 
 def _parse_price_string(text: str | None) -> float | None:

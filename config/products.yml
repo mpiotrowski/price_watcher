@@ -31,6 +31,6 @@ stores:
 products:
   - name: "PETG 1kg Red"
     url: "https://www.microcenter.com/product/626529/inland-175mm-petg-3d-printer-filament-1kg-(22-lbs)-spool-blue"
-    stores: ["075"]
+    stores: ["055"]
     # check_interval: 180  # optional per-product override
     # price_threshold: 300  # optional: only notify on price drop if below this amount

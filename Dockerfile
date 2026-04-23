@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -e .
 # Copy source
 COPY src/ ./src/
 COPY config/ ./config/
+COPY migrations/ ./migrations/
 
 # Persistent volume for the SQLite database
 VOLUME ["/data"]
