@@ -14,13 +14,14 @@ load_dotenv()
 class StoreConfig:
     id: str
     name: str
+    retailer_id: str = "microcenter"
 
 
 @dataclass
 class ProductConfig:
     name: str
     url: str
-    stores: list[str]  # store IDs
+    stores: list[str]  # store codes
     check_interval: int | None = None  # seconds; None means use global default
     price_threshold: float | None = None  # notify on price drop only below this
 
@@ -31,12 +32,12 @@ class AppConfig:
     telegram_chat_id: str
     database_url: str
     check_interval: int
-    stores: dict[str, StoreConfig]  # keyed by store ID
+    stores: dict[str, StoreConfig]  # keyed by store code
     products: list[ProductConfig]
 
-    def store_name(self, store_id: str) -> str:
-        store = self.stores.get(store_id)
-        return store.name if store else store_id
+    def store_name(self, store_code: str) -> str:
+        store = self.stores.get(store_code)
+        return store.name if store else store_code
 
     def interval_for(self, product: ProductConfig) -> int:
         return product.check_interval or self.check_interval
@@ -56,7 +57,11 @@ def load_config(config_path: str | Path = "config/products.yml") -> AppConfig:
         raw = yaml.safe_load(f)
 
     stores = {
-        s["id"]: StoreConfig(id=s["id"], name=s["name"])
+        s["id"]: StoreConfig(
+            id=s["id"],
+            name=s["name"],
+            retailer_id=s.get("retailer_id", "microcenter"),
+        )
         for s in raw.get("stores", [])
     }
 

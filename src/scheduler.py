@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from config import AppConfig
 from db import PriceSnapshot, backfill_product_name, get_last_snapshot, list_products, list_stores, record_failure, reset_failures
-from scrapers.microcenter import ScrapeResult, scrape
+from scrapers import get_scraper
 import notifier
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,9 @@ def run_check(
     cfg: AppConfig,
     product_id: int,
     product_url: str,
-    store_id: str,
+    store_id: int,
+    store_code: str,
+    retailer_id: str,
     store_name: str,
     price_threshold: float | None,
     engine,
@@ -27,7 +29,8 @@ def run_check(
     logger.info("Checking product #%d @ %s", product_id, store_name)
 
     try:
-        result: ScrapeResult = scrape(product_url, store_id)
+        scrape = get_scraper(retailer_id)
+        result = scrape(product_url, store_code)
     except Exception as e:
         logger.error("Scrape failed for #%d @ %s: %s", product_id, store_name, e)
         with Session(engine) as session:
@@ -58,7 +61,7 @@ def run_check(
     with Session(engine) as session:
         backfill_product_name(session, product_id, result.product_name)
 
-        last = get_last_snapshot(session, product_url, store_id)
+        last = get_last_snapshot(session, product_url, store_code)
 
         stock_changed = last is None or last.in_stock != result.in_stock
         price_changed = (
@@ -68,7 +71,6 @@ def run_check(
             and last.price != result.price
         )
 
-        # Apply price threshold filter if configured
         if price_changed and price_threshold is not None:
             if result.price > price_threshold:
                 price_changed = False
@@ -97,7 +99,7 @@ def run_check(
 
         snapshot = PriceSnapshot(
             product_url=product_url,
-            store_id=store_id,
+            store_code=store_code,
             product_name=result.product_name,
             price=result.price,
             in_stock=result.in_stock,
@@ -115,7 +117,7 @@ def run_check(
     )
 
 
-def _job_id(product_id: int, store_id: str) -> str:
+def _job_id(product_id: int, store_id: int) -> str:
     return f"product:{product_id}:{store_id}"
 
 
@@ -124,7 +126,9 @@ def schedule_product(
     cfg: AppConfig,
     product_id: int,
     product_url: str,
-    store_id: str,
+    store_id: int,
+    store_code: str,
+    retailer_id: str,
     store_name: str,
     check_interval: int | None,
     price_threshold: float | None,
@@ -136,17 +140,17 @@ def schedule_product(
         "interval",
         seconds=interval,
         id=_job_id(product_id, store_id),
-        args=[cfg, product_id, product_url, store_id, store_name, price_threshold, engine],
+        args=[cfg, product_id, product_url, store_id, store_code, retailer_id, store_name, price_threshold, engine],
         next_run_time=datetime.now(timezone.utc),
     )
     logger.info("Scheduled: #%d @ %s every %ds", product_id, store_name, interval)
 
 
-def unschedule_product(scheduler: BackgroundScheduler, product_id: int, store_id: str) -> None:
+def unschedule_product(scheduler: BackgroundScheduler, product_id: int, store_id: int) -> None:
     job_id = _job_id(product_id, store_id)
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)
-        logger.info("Unscheduled: #%d @ %s", product_id, store_id)
+        logger.info("Unscheduled: #%d @ store #%d", product_id, store_id)
 
 
 def build_and_start(cfg: AppConfig, engine) -> BackgroundScheduler:
@@ -154,13 +158,16 @@ def build_and_start(cfg: AppConfig, engine) -> BackgroundScheduler:
 
     with Session(engine) as session:
         products = list_products(session)
-        store_map = {s.id: s.name for s in list_stores(session)}
+        store_map = {s.id: s for s in list_stores(session)}
 
     for product in products:
-        store_name = store_map.get(product.store_id, product.store_id)
+        store = store_map.get(product.store_id)
+        store_name = store.name if store else str(product.store_id)
+        store_code = store.store_code if store else ""
+        retailer_id = store.retailer_id if store else ""
         schedule_product(
             scheduler, cfg,
-            product.id, product.url, product.store_id, store_name,
+            product.id, product.url, product.store_id, store_code, retailer_id, store_name,
             product.check_interval, product.price_threshold,
             engine,
         )

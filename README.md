@@ -1,9 +1,10 @@
-# MicroCenter Price Watcher
+# Price Watcher
 
-Monitors MicroCenter product pages for price and stock changes, then sends Telegram notifications when something changes. Runs as a lightweight Docker container backed by SQLite.
+Monitors product pages for price and stock changes, then sends Telegram notifications when something changes. Runs as a lightweight Docker container backed by SQLite. Currently supports MicroCenter; designed to accommodate additional retailers.
 
 ## Features
 
+- Multi-retailer architecture — add new retailers by dropping in a scraper module
 - Per-store inventory and price tracking
 - Telegram bot interface — add/remove products without touching config files
 - Configurable check intervals and price-drop thresholds per product
@@ -88,6 +89,7 @@ check_interval: 300   # global default in seconds
 stores:
   - id: "055"
     name: "Madison Heights, MI"
+    retailer_id: "microcenter"   # optional, defaults to "microcenter"
 
 products:
   - name: "Display name"
@@ -97,7 +99,7 @@ products:
     price_threshold: 29.99 # optional: only notify on price drop if price <= this
 ```
 
-Find your store ID at [microcenter.com/site/stores](https://www.microcenter.com/site/stores/default.aspx). Common IDs:
+Find your MicroCenter store ID at [microcenter.com/site/stores](https://www.microcenter.com/site/stores/default.aspx). Common IDs:
 
 | ID  | Location              |
 |-----|-----------------------|
@@ -119,12 +121,27 @@ Find your store ID at [microcenter.com/site/stores](https://www.microcenter.com/
 
 | Command | Description |
 |---------|-------------|
-| `/list` | Show all tracked products and their current status |
-| `/add <url> [store_id]` | Start tracking a product |
+| `/list` | Show all tracked products |
+| `/add <url> <store_code> [price_threshold] [interval]` | Start tracking a product |
 | `/remove <id>` | Stop tracking a product |
-| `/stores` | List configured stores |
-| `/addstore <id> <name>` | Add a store |
-| `/removestore <id>` | Remove a store |
+| `/stores` | List configured stores grouped by retailer |
+| `/addstore <retailer_id> <store_code> <name>` | Add a store |
+| `/removestore <store_id>` | Remove a store (use numeric ID from `/stores`) |
+
+The retailer for `/add` is inferred from the URL — no need to specify it explicitly.
+
+## Database Migrations
+
+Migrations are standalone scripts in `migrations/` and must be run manually. To run against a live deployment:
+
+```bash
+docker compose run --rm watcher python migrations/<script>.py
+```
+
+| Script | Description |
+|--------|-------------|
+| `add_retailers_table.py` | Introduces `retailers` table; restructures `stores` with surrogate PK and `store_code` |
+| `add_consecutive_failures.py` | Adds `consecutive_failures` column to `tracked_products` |
 
 ## Local Development
 
