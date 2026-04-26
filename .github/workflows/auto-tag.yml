@@ -8,7 +8,7 @@ on:
       - pyproject.toml
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/price-watcher
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/price_watcher
 
 jobs:
   tag-and-publish:
