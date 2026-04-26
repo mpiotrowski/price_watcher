@@ -15,28 +15,19 @@ Monitors product pages for price and stock changes, then sends Telegram notifica
 ### Pull and run the pre-built image
 
 ```bash
-# Pull the image
-docker pull ghcr.io/mpiotrowski91/price-watcher:latest
+docker pull mpiotrowski91/price_watcher:latest
 
-# Create required directories
 mkdir -p data config
-
-# Copy and fill in environment variables
 cp .env.example .env
-# Edit .env with your TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-
-# Copy the example config
 cp config/products.yml.example config/products.yml
-# Edit config/products.yml with your products and store IDs
 
-# Run
 docker run -d \
   --name price-watcher \
   --restart unless-stopped \
   --env-file .env \
   -v $(pwd)/data:/data \
   -v $(pwd)/config:/app/config \
-  ghcr.io/mpiotrowski91/price-watcher:latest
+  mpiotrowski91/price_watcher:latest
 ```
 
 ### Using docker compose (recommended)
@@ -46,7 +37,7 @@ Update `docker-compose.yml` to reference the pre-built image instead of building
 ```yaml
 services:
   watcher:
-    image: ghcr.io/mpiotrowski91/price-watcher:latest
+    image: mpiotrowski91/price_watcher:latest
     restart: unless-stopped
     env_file: .env
     volumes:
@@ -64,9 +55,9 @@ docker compose logs -f
 ## Build from Source
 
 ```bash
-git clone https://github.com/mpiotrowski91/price-watcher.git
-cd price-watcher
-cp .env.example .env   # fill in your tokens
+git clone https://github.com/mpiotrowski/price_watcher.git
+cd price_watcher
+cp .env.example .env
 docker compose up --build -d
 docker compose logs -f
 ```
