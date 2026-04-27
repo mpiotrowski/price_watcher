@@ -172,6 +172,11 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
 
     with Session(engine) as session:
         retailers = list_retailers(session)
+        logger.info(
+            "/add: url=%r store_code=%r retailers_in_db=%s",
+            url, store_code,
+            [(r.id, r.base_url) for r in retailers],
+        )
         matched_retailer = next(
             (r for r in retailers if r.base_url and url.startswith(r.base_url)),
             None,
@@ -180,6 +185,11 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
             known_urls = ", ".join(
                 f"<code>{html.escape(r.base_url)}</code>" for r in retailers if r.base_url
             )
+            logger.warning(
+                "/add: no retailer matched url=%r; retailers with base_url: %s",
+                url,
+                [(r.id, r.base_url) for r in retailers if r.base_url],
+            )
             return (
                 f"Invalid URL — must start with a known retailer's base URL.\n"
                 f"Known: {known_urls or 'none configured'}"
@@ -187,6 +197,10 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
 
         store = get_store_by_code(session, matched_retailer.id, store_code)
         if store is None:
+            logger.warning(
+                "/add: store_code=%r not found for retailer=%r",
+                store_code, matched_retailer.id,
+            )
             return (
                 f"Unknown store <code>{html.escape(store_code)}</code> for {html.escape(matched_retailer.name)}. "
                 f"Add it first with /addstore, or check available stores with /stores."
