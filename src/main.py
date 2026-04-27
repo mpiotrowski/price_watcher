@@ -4,7 +4,7 @@ import sys
 from sqlalchemy.orm import Session
 
 from config import load_config
-from db import Retailer, add_product, add_retailer, add_store, get_store_by_code, init_db, list_products, list_stores
+from db import Retailer, add_product, add_store, get_store_by_code, init_db, list_products, list_stores
 from notifier import register_commands
 from scheduler import build_and_start
 from telegram_listener import poll_updates
@@ -18,20 +18,39 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# All supported retailers with their URL prefixes. Kept here so startup can
+# ensure they exist / fix a missing base_url without requiring a manual migration.
+_KNOWN_RETAILERS = [
+    ("microcenter", "MicroCenter", "https://www.microcenter.com"),
+    ("unifi", "Unifi", "https://store.ui.com"),
+]
+
+
+def ensure_retailers(engine) -> None:
+    """Upsert known retailers on every startup so base_urls are always correct."""
+    with Session(engine) as session:
+        for retailer_id, name, base_url in _KNOWN_RETAILERS:
+            existing = session.get(Retailer, retailer_id)
+            if existing is None:
+                session.add(Retailer(id=retailer_id, name=name, base_url=base_url))
+                session.commit()
+                logger.info("Seeded missing retailer: %s (%s)", retailer_id, base_url)
+            elif existing.base_url != base_url:
+                existing.base_url = base_url
+                session.commit()
+                logger.info("Fixed retailer base_url: %s → %s", retailer_id, base_url)
+            else:
+                logger.debug("Retailer OK: %s (%s)", retailer_id, base_url)
+
 
 def seed_from_yaml(engine, cfg) -> None:
-    """Populate retailers, stores and tracked_products from the YAML config on first run."""
+    """Populate stores and tracked_products from the YAML config on first run."""
     with Session(engine) as session:
         if list_stores(session) or list_products(session, include_inactive=True):
             logger.info("Database already seeded, skipping YAML migration")
             return
 
         logger.info("Seeding database from products.yml")
-
-        # Seed the default retailer
-        if session.get(Retailer, "microcenter") is None:
-            add_retailer(session, "microcenter", "MicroCenter", "https://www.microcenter.com")
-            logger.info("  Added retailer: microcenter")
 
         # Collect all store codes referenced by products (may exceed the stores list)
         all_store_codes = {code for p in cfg.products for code in p.stores}
@@ -65,6 +84,7 @@ def main() -> None:
     cfg = load_config("config/products.yml")
 
     engine = init_db(cfg.database_url)
+    ensure_retailers(engine)
     seed_from_yaml(engine, cfg)
     register_commands(cfg.telegram_bot_token)
 
