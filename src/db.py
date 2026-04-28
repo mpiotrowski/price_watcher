@@ -96,6 +96,21 @@ def get_last_snapshot(
     )
 
 
+def get_price_history(
+    session: Session, product_url: str, store_code: str, since: datetime
+) -> list[PriceSnapshot]:
+    return (
+        session.query(PriceSnapshot)
+        .filter(
+            PriceSnapshot.product_url == product_url,
+            PriceSnapshot.store_code == store_code,
+            PriceSnapshot.checked_at >= since,
+        )
+        .order_by(PriceSnapshot.checked_at.asc())
+        .all()
+    )
+
+
 # --- Retailer CRUD ---
 
 def list_retailers(session: Session) -> list[Retailer]:
