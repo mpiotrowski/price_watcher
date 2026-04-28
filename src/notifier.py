@@ -15,10 +15,27 @@ COMMANDS = [
     ("list",        "Show all tracked products"),
     ("add",         "Track a product: <url> <store_id> [threshold] [interval]"),
     ("remove",      "Stop tracking a product: <id>"),
+    ("history",     "Price history chart: <product_id> [days]"),
     ("stores",      "List configured stores"),
     ("addstore",    "Add a store: <store_id> <name>"),
     ("removestore", "Remove a store: <store_id>"),
 ]
+
+
+def send_photo(bot_token: str, chat_id: str, image_bytes: bytes, caption: str) -> None:
+    url = TELEGRAM_API.format(token=bot_token) + "/sendPhoto"
+    try:
+        r = httpx.post(
+            url,
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": ("chart.png", image_bytes, "image/png")},
+            timeout=30,
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        logger.error("Failed to send Telegram photo: %s — %s", e, e.response.text)
+    except httpx.HTTPError as e:
+        logger.error("Failed to send Telegram photo: %s", e)
 
 
 def send(bot_token: str, chat_id: str, text: str) -> None:

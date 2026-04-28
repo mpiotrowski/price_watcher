@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,10 +14,11 @@ from sqlalchemy.orm import Session
 from config import AppConfig
 from db import (
     Store,
-    add_product, add_store, get_store_by_code,
+    add_product, add_store, get_price_history, get_store_by_code,
     list_products, list_retailers, list_stores,
     remove_product, remove_store,
 )
+import grapher
 import notifier
 from notifier import TELEGRAM_API, send
 from scheduler import schedule_product, unschedule_product
@@ -239,6 +241,52 @@ def _handle_add(args: list[str], cfg: AppConfig, engine: Engine, scheduler: Back
     )
 
 
+def _handle_history(args: list[str], cfg: AppConfig, engine: Engine) -> str | None:
+    """Returns an error string, or None after successfully sending the chart photo."""
+    if not args or not args[0].isdigit():
+        return "Usage: /history &lt;product_id&gt; [days]\nExample: /history 3 30"
+
+    product_id = int(args[0])
+    days = 7
+    if len(args) >= 2:
+        try:
+            days = int(args[1])
+            if not (1 <= days <= 365):
+                return "Days must be between 1 and 365."
+        except ValueError:
+            return f"Invalid days: <code>{html.escape(args[1])}</code> — must be a whole number."
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    with Session(engine) as session:
+        products = list_products(session, include_inactive=True)
+        product = next((p for p in products if p.id == product_id), None)
+        if product is None:
+            return f"No product with ID #{product_id}."
+
+        store = session.get(Store, product.store_id)
+        store_code = store.store_code if store else ""
+        store_name = store.name if store else str(product.store_id)
+        product_name = product.name or product.url
+
+        snapshots = get_price_history(session, product.url, store_code, since)
+
+    priced = [s for s in snapshots if s.price is not None]
+    if not priced:
+        return (
+            f"No price data for #{product_id} in the last {days} day{'s' if days != 1 else ''}."
+        )
+
+    image_bytes = grapher.render_price_chart(snapshots, product_name, store_name, days)
+    notifier.send_photo(
+        cfg.telegram_bot_token,
+        cfg.telegram_chat_id,
+        image_bytes,
+        caption=f"<b>{html.escape(product_name)}</b>  ·  {html.escape(store_name)}",
+    )
+    return None
+
+
 def _handle_remove(args: list[str], engine: Engine, scheduler: BackgroundScheduler) -> str:
     if not args or not args[0].isdigit():
         return "Usage: /remove &lt;id&gt;\nGet the ID from /list"
@@ -314,12 +362,16 @@ def poll_updates(cfg: AppConfig, engine: Engine, scheduler: BackgroundScheduler)
             elif command == "/remove":
                 logger.info("Received /remove command")
                 reply = _handle_remove(args, engine, scheduler)
+            elif command == "/history":
+                logger.info("Received /history command")
+                reply = _handle_history(args, cfg, engine)
             elif command.startswith("/"):
                 reply = f"Unknown command: <code>{html.escape(command)}</code>"
             else:
                 continue
 
-            send(cfg.telegram_bot_token, cfg.telegram_chat_id, reply)
+            if reply:
+                send(cfg.telegram_bot_token, cfg.telegram_chat_id, reply)
 
         if not updates:
             time.sleep(1)
