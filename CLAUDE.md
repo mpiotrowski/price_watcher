@@ -79,12 +79,47 @@ The app is a long-running Python process with two concurrent threads:
 **Migrations:**
 - `migrations/` contains standalone scripts run manually, not auto-applied. Run them with `docker compose run --rm watcher python migrations/<script>.py`.
 
+## Testing
+
+All new features and bug fixes must be accompanied by tests. Run the full suite before opening a PR:
+
+```bash
+pytest
+pytest tests/test_scraper_microcenter.py  # single file
+```
+
+Tests use an in-memory SQLite database — no external services needed. HTTP calls (curl_cffi, httpx) are always mocked.
+
+### Adding tests for a new scraper
+
+When adding `src/scrapers/<retailer_id>.py`, also create `tests/test_scraper_<retailer_id>.py`.
+
+Mock HTTP by patching the module-level `requests` binding:
+```python
+with patch("scrapers.<retailer_id>.requests") as mock_req:
+    mock_req.get.return_value = MagicMock(text=html, raise_for_status=MagicMock())
+    result = scrape(url, store_code)
+```
+
+Required test cases:
+1. Happy path — in-stock product, price and name parsed correctly
+2. Out-of-stock product
+3. Price unavailable → `result.price is None`
+4. No recognizable product structure → raises an appropriate exception
+5. HTTP error from `raise_for_status` propagates out of `scrape`
+6. Product name parsing (at least the primary source)
+
+Also add to `tests/test_telegram_handlers.py`:
+- `/add` with a URL matching the new retailer's `base_url` + a valid store code → product created, job scheduled
+- `/add` with a matching URL but unknown store code → error returned
+
 ## Adding a New Retailer
 
 1. Create `src/scrapers/<retailer_id>.py` with a `scrape(url: str, store_code: str) -> ScrapeResult` function
 2. Register it in `src/scrapers/__init__.py`: add an entry to `_REGISTRY`
 3. Insert a row into the `retailers` table with the matching `id`, `name`, and `base_url`
 4. Add store rows via `/addstore <retailer_id> <store_code> <name>` in Telegram
+5. Add tests as described in the Testing section above
 
 The scheduler dispatches to the correct scraper automatically via `retailer_id` on the store.
 
