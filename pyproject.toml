@@ -1,6 +1,6 @@
 [project]
 name = "price-watcher"
-version = "0.3.0"
+version = "0.3.1"
 requires-python = ">=3.14"
 dependencies = [
     "httpx[http2]>=0.27",
@@ -20,6 +20,10 @@ dev = [
     "pytest>=9.0.3",
     "pytest-httpx>=0.30",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
