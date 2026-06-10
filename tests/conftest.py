@@ -45,7 +45,13 @@ def seeded_engine(engine):
             name="Unifi Store",
             base_url="https://store.ui.com",
         ))
+        session.add(Retailer(
+            id="amazon",
+            name="Amazon US",
+            base_url="https://www.amazon.com",
+        ))
         session.add(Store(retailer_id="microcenter", store_code="055", name="Madison Heights, MI"))
         session.add(Store(retailer_id="unifi", store_code="online", name="Online Store"))
+        session.add(Store(retailer_id="amazon", store_code="us", name="Amazon US Online Store"))
         session.commit()
     return engine

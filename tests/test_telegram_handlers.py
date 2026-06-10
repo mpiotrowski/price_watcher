@@ -17,6 +17,7 @@ from telegram_listener import (
 
 _MC_URL = "https://www.microcenter.com/product/123/gpu"
 _UNIFI_URL = "https://store.ui.com/products/unifi-switch-pro-24"
+_AMAZON_URL = "https://www.amazon.com/dp/B0EXAMPLE123"
 
 
 @pytest.fixture
@@ -163,6 +164,14 @@ class TestHandleAdd:
         mock_scheduler.add_job.assert_called_once()
         with Session(seeded_engine) as session:
             products = session.query(TrackedProduct).filter_by(url=_UNIFI_URL).all()
+        assert len(products) == 1
+
+    def test_add_amazon_product(self, cfg, seeded_engine, mock_scheduler):
+        reply = _handle_add([_AMAZON_URL, "us"], cfg, seeded_engine, mock_scheduler)
+        assert "tracking" in reply.lower()
+        mock_scheduler.add_job.assert_called_once()
+        with Session(seeded_engine) as session:
+            products = session.query(TrackedProduct).filter_by(url=_AMAZON_URL).all()
         assert len(products) == 1
 
 
